@@ -17,6 +17,7 @@ const App = () => {
     savePath: '',
     backupPath: ''
   })
+  const [backups, setBackups] = useState([])
 
   // 添加新游戏
   const addGame = () => {
@@ -36,6 +37,24 @@ const App = () => {
   // 选择游戏
   const handleGameSelect = (game) => {
     setSelectedGame(game)
+    // 重置备份列表
+    setBackups([])
+  }
+
+  // 创建备份
+  const createBackup = () => {
+    const now = new Date()
+    const timeStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`
+    
+    const newBackup = {
+      id: Date.now(),
+      time: timeStr,
+      note: ''
+    }
+    
+    // 将新备份添加到列表开头
+    setBackups([newBackup, ...backups])
+    message.success('备份创建成功')
   }
 
   return (
@@ -92,7 +111,25 @@ const App = () => {
         
         {/* 右侧卡片 - 60% 宽度 */}
         <Card 
-          title="存档管理" 
+          title={
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              存档管理
+              {selectedGame && (
+                <Button 
+                  type="default" 
+                  size="small" 
+                  style={{ 
+                    borderColor: '#52c41a', 
+                    color: '#52c41a', 
+                    borderRadius: 4 
+                  }}
+                  onClick={createBackup}
+                >
+                  备份
+                </Button>
+              )}
+            </div>
+          } 
           style={{ 
             width: '60%', 
             height: '100%' 
@@ -103,9 +140,27 @@ const App = () => {
               <h3>{selectedGame.name}</h3>
               <p>存档路径: {selectedGame.savePath}</p>
               <p>备份路径: {selectedGame.backupPath}</p>
+              
               <div style={{ marginTop: 24 }}>
-                <Button type="default" style={{ marginRight: 8 }}>保存存档</Button>
-                <Button type="default">恢复存档</Button>
+                <h4>备份列表</h4>
+                <List
+                  dataSource={backups}
+                  renderItem={(item) => (
+                    <List.Item>
+                      <div style={{ width: '100%' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span>{item.time}</span>
+                          <span>{item.note || '(无备注)'}</span>
+                        </div>
+                      </div>
+                    </List.Item>
+                  )}
+                  locale={{ emptyText: '暂无备份，请点击上方备份按钮创建' }}
+                  pagination={{
+                    pageSize: 5,
+                    showSizeChanger: false
+                  }}
+                />
               </div>
             </div>
           ) : (
