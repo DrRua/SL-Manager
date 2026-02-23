@@ -2,9 +2,9 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "SL-Manager",
   "version": "0.1.0",
-  "identifier": "com.tauri.dev",
+  "identifier": "com.slmanager.app",
   "build": {
-    "frontendDist": "current dir",
+    "frontendDist": "../dist",
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build"
   },
