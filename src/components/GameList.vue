@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { NCard, NButton, NSpace, NModal, NForm, NFormItem, NInput, NList, NListItem } from "naive-ui";
+import { NCard, NButton, NSpace, NModal, NForm, NFormItem, NInput, NList, NListItem, NDropdown, useDialog } from "naive-ui";
 import { ref, onMounted } from "vue";
 import { open } from "@tauri-apps/plugin-dialog";
 
@@ -10,16 +10,35 @@ interface GameItem {
 }
 
 const gameList = ref<GameItem[]>([]);
+const selectedGameId = ref<string | null>(null);
 const showModal = ref(false);
+const isEditMode = ref(false);
+const editingGameId = ref<string | null>(null);
 const newGameName = ref("");
 const newGameSavePath = ref("");
+const dropdownShow = ref(false);
+const dialog = useDialog();
 
 const STORAGE_KEY = "sl-manager-games";
+const SELECTED_GAME_KEY = "sl-manager-selected-game";
+
+const dropdownOptions = [
+  { label: "编辑", key: "edit" },
+  { label: "删除", key: "delete" }
+];
 
 function loadGames() {
   const stored = localStorage.getItem(STORAGE_KEY);
   if (stored) {
     gameList.value = JSON.parse(stored);
+  }
+  
+  const storedSelected = localStorage.getItem(SELECTED_GAME_KEY);
+  if (storedSelected) {
+    const exists = gameList.value.some(g => String(g.id) === storedSelected);
+    if (exists) {
+      selectedGameId.value = storedSelected;
+    }
   }
 }
 
@@ -27,9 +46,27 @@ function saveGames() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(gameList.value));
 }
 
-function openModal() {
+function saveSelectedGame() {
+  if (selectedGameId.value) {
+    localStorage.setItem(SELECTED_GAME_KEY, selectedGameId.value);
+  } else {
+    localStorage.removeItem(SELECTED_GAME_KEY);
+  }
+}
+
+function openNewModal() {
+  editingGameId.value = null;
   newGameName.value = "";
   newGameSavePath.value = "";
+  isEditMode.value = false;
+  showModal.value = true;
+}
+
+function openEditModal(game: GameItem) {
+  editingGameId.value = game.id;
+  newGameName.value = game.name;
+  newGameSavePath.value = game.savePath;
+  isEditMode.value = true;
   showModal.value = true;
 }
 
@@ -50,15 +87,54 @@ function handleConfirm() {
     return;
   }
   
-  const newGame: GameItem = {
-    id: Date.now().toString(),
-    name: newGameName.value.trim(),
-    savePath: newGameSavePath.value.trim(),
-  };
+  if (isEditMode.value && editingGameId.value) {
+    const index = gameList.value.findIndex(g => g.id === editingGameId.value);
+    if (index !== -1) {
+      gameList.value[index].name = newGameName.value.trim();
+      gameList.value[index].savePath = newGameSavePath.value.trim();
+    }
+  } else {
+    const newGame: GameItem = {
+      id: Date.now().toString(),
+      name: newGameName.value.trim(),
+      savePath: newGameSavePath.value.trim(),
+    };
+    gameList.value.push(newGame);
+  }
   
-  gameList.value.push(newGame);
   saveGames();
   showModal.value = false;
+}
+
+function handleSelectGame(gameId: string) {
+  selectedGameId.value = selectedGameId.value === gameId ? null : gameId;
+  saveSelectedGame();
+}
+
+function handleDropdownSelect(key: string, game: GameItem) {
+  if (key === "edit") {
+    openEditModal(game);
+  } else if (key === "delete") {
+    dialog.warning({
+      title: "确认删除",
+      content: `确定要删除"${game.name}"吗？`,
+      positiveText: "确定",
+      negativeText: "取消",
+      onPositiveClick: () => {
+        deleteGame(game.id);
+      }
+    });
+  }
+  dropdownShow.value = false;
+}
+
+function deleteGame(gameId: string) {
+  gameList.value = gameList.value.filter(g => g.id !== gameId);
+  if (selectedGameId.value === gameId) {
+    selectedGameId.value = null;
+    saveSelectedGame();
+  }
+  saveGames();
 }
 
 onMounted(() => {
@@ -69,15 +145,37 @@ onMounted(() => {
 <template>
   <NCard title="游戏列表" bordered>
     <template #header-extra>
-      <NButton type="primary" @click="openModal">新建</NButton>
+      <NButton type="primary" @click="openNewModal">新建</NButton>
     </template>
     
     <div class="card-content">
       <NList v-if="gameList.length > 0" hoverable clickable>
-        <NListItem v-for="game in gameList" :key="game.id">
-          <div class="game-item">
-            <span class="game-name">{{ game.name }}</span>
-            <span class="game-path">{{ game.savePath }}</span>
+        <NListItem 
+          v-for="game in gameList" 
+          :key="game.id"
+          :class="{ 'game-item-selected': selectedGameId === game.id }"
+          @click="handleSelectGame(game.id)"
+        >
+          <div class="game-item-content">
+            <div class="game-item-info">
+              <span class="game-name">{{ game.name }}</span>
+              <span class="game-path">{{ game.savePath }}</span>
+            </div>
+            <NDropdown 
+              trigger="click" 
+              :options="dropdownOptions" 
+              @select="(key: string) => handleDropdownSelect(key, game)"
+            >
+              <NButton quaternary circle size="small" @click.stop>
+                <template #icon>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <circle cx="12" cy="5" r="2"></circle>
+                    <circle cx="12" cy="12" r="2"></circle>
+                    <circle cx="12" cy="19" r="2"></circle>
+                  </svg>
+                </template>
+              </NButton>
+            </NDropdown>
           </div>
         </NListItem>
       </NList>
@@ -85,7 +183,7 @@ onMounted(() => {
     </div>
   </NCard>
 
-  <NModal v-model:show="showModal" preset="card" title="新建游戏" style="width: 500px;">
+  <NModal v-model:show="showModal" preset="card" :title="isEditMode ? '编辑游戏' : '新建游戏'" style="width: 500px;">
     <NForm>
       <NFormItem label="名称">
         <NInput v-model:value="newGameName" placeholder="请输入游戏名称" />
@@ -120,10 +218,19 @@ onMounted(() => {
   height: 100%;
 }
 
-.game-item {
+.game-item-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.game-item-info {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  flex: 1;
+  overflow: hidden;
 }
 
 .game-name {
@@ -154,5 +261,10 @@ onMounted(() => {
 
 .folder-btn {
   flex-shrink: 0;
+}
+
+.game-item-selected {
+  background-color: rgba(24, 160, 88, 0.1);
+  border-radius: 6px;
 }
 </style>
