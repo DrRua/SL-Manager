@@ -42,6 +42,8 @@ function loadGames() {
     const exists = gameList.value.some(g => String(g.id) === storedSelected);
     if (exists) {
       selectedGameId.value = storedSelected;
+      const selectedGame = gameList.value.find(g => g.id === selectedGameId.value) || null;
+      emit('gameSelected', selectedGame);
     }
   }
 }

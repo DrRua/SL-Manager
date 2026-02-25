@@ -139,6 +139,32 @@ fn get_backup_list() -> Result<Vec<BackupItem>, String> {
     Ok(backups)
 }
 
+#[tauri::command]
+fn update_backup_note(backup_id: String, note: String) -> Result<(), String> {
+    let exe_dir = std::env::current_exe()
+        .map_err(|e| e.to_string())?
+        .parent()
+        .ok_or("Failed to get executable directory")?
+        .to_path_buf();
+    
+    let backup_dir = exe_dir.join("backupFiles").join(&backup_id);
+    let config_path = backup_dir.join("config.json");
+    
+    if !config_path.exists() {
+        return Err("备份文件不存在".to_string());
+    }
+    
+    let config_content = fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
+    let mut config: BackupConfig = serde_json::from_str(&config_content).map_err(|e| e.to_string())?;
+    
+    config.note = note;
+    
+    let config_json = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
+    fs::write(&config_path, config_json).map_err(|e| e.to_string())?;
+    
+    Ok(())
+}
+
 fn calculate_dir_size(path: &Path) -> String {
     if !path.exists() {
         return "0 B".to_string();
@@ -252,7 +278,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .invoke_handler(tauri::generate_handler![greet, get_app_data_dir, backup_save, get_backup_list, restore_save])
+        .invoke_handler(tauri::generate_handler![greet, get_app_data_dir, backup_save, get_backup_list, restore_save, update_backup_note])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

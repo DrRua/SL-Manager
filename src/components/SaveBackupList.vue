@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { NCard, NButton, NList, NListItem, NPagination, NSpace } from "naive-ui";
+import { NCard, NButton, NList, NListItem, NPagination, NSpace, NModal, NInput } from "naive-ui";
 import { ref, computed, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -35,6 +35,11 @@ const backupLoading = ref(false);
 const backupList = ref<DisplayBackupItem[]>([]);
 const selectedBackupId = ref<string | null>(null);
 
+const editModalVisible = ref(false);
+const editingNote = ref('');
+const editingBackupId = ref<string | null>(null);
+const editLoading = ref(false);
+
 const currentPage = ref(1);
 const pageSize = ref(5);
 
@@ -69,7 +74,7 @@ async function loadBackupList() {
     
     backupList.value = list.map(item => ({
       id: item.id,
-      name: item.source_path ? item.source_path.split(/[/\\]/).pop() || '未知游戏' : '未知游戏',
+      name: '',
       date: formatTimestamp(item.save_time),
       size: item.size,
       note: item.note,
@@ -137,6 +142,43 @@ async function handleRestore() {
 function selectBackup(backupId: string) {
   selectedBackupId.value = selectedBackupId.value === backupId ? null : backupId;
 }
+
+function openEditModal(item: DisplayBackupItem) {
+  editingBackupId.value = item.id;
+  editingNote.value = item.note;
+  editModalVisible.value = true;
+}
+
+async function handleUpdateNote() {
+  if (!editingBackupId.value) return;
+  
+  editLoading.value = true;
+  try {
+    await invoke("update_backup_note", {
+      backupId: editingBackupId.value,
+      note: editingNote.value
+    });
+    
+    const index = backupList.value.findIndex(b => b.id === editingBackupId.value);
+    if (index !== -1) {
+      backupList.value[index].note = editingNote.value;
+    }
+    
+    props.showMessage?.('success', '备注更新成功');
+    editModalVisible.value = false;
+  } catch (error) {
+    console.error("Failed to update note:", error);
+    props.showMessage?.('error', `备注更新失败: ${error}`);
+  } finally {
+    editLoading.value = false;
+  }
+}
+
+function handleEditKeydown(e: KeyboardEvent) {
+  if (e.key === 'Enter') {
+    handleUpdateNote();
+  }
+}
 </script>
 
 <template>
@@ -151,11 +193,13 @@ function selectBackup(backupId: string) {
         >
           <div class="backup-item-content">
             <div class="backup-item-info">
-              <span class="backup-name">{{ item.name }}</span>
+              <span class="backup-name">{{ item.note || '无备注' }}</span>
               <span class="backup-date">{{ item.date }}</span>
-              <span v-if="item.note" class="backup-note">{{ item.note }}</span>
             </div>
-            <span class="backup-size">{{ item.size }}</span>
+            <div class="backup-actions">
+              <NButton text type="primary" @click.stop="openEditModal(item)">✏️</NButton>
+              <span class="backup-size">{{ item.size }}</span>
+            </div>
           </div>
         </NListItem>
       </NList>
@@ -189,6 +233,10 @@ function selectBackup(backupId: string) {
       </div>
     </template>
   </NCard>
+
+  <NModal v-model:show="editModalVisible" preset="dialog" title="修改备注" :loading="editLoading" @positive-click="handleUpdateNote">
+    <NInput v-model:value="editingNote" placeholder="请输入备注" @keydown="handleEditKeydown" />
+  </NModal>
 </template>
 
 <style scoped>
@@ -236,6 +284,13 @@ function selectBackup(backupId: string) {
 .backup-size {
   font-size: 12px;
   color: #666;
+  flex-shrink: 0;
+}
+
+.backup-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex-shrink: 0;
 }
 
