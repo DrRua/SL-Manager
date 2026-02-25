@@ -165,6 +165,25 @@ fn update_backup_note(backup_id: String, note: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn delete_backup(backup_id: String) -> Result<(), String> {
+    let exe_dir = std::env::current_exe()
+        .map_err(|e| e.to_string())?
+        .parent()
+        .ok_or("Failed to get executable directory")?
+        .to_path_buf();
+    
+    let backup_dir = exe_dir.join("backupFiles").join(&backup_id);
+    
+    if !backup_dir.exists() {
+        return Err("备份文件不存在".to_string());
+    }
+    
+    fs::remove_dir_all(&backup_dir).map_err(|e| e.to_string())?;
+    
+    Ok(())
+}
+
 fn calculate_dir_size(path: &Path) -> String {
     if !path.exists() {
         return "0 B".to_string();
@@ -278,7 +297,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .invoke_handler(tauri::generate_handler![greet, get_app_data_dir, backup_save, get_backup_list, restore_save, update_backup_note])
+        .invoke_handler(tauri::generate_handler![greet, get_app_data_dir, backup_save, get_backup_list, restore_save, update_backup_note, delete_backup])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

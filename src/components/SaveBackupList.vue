@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { NCard, NButton, NList, NListItem, NPagination, NSpace, NModal, NInput } from "naive-ui";
+import { NCard, NButton, NList, NListItem, NPagination, NSpace, NModal, NInput, NPopconfirm } from "naive-ui";
 import { ref, computed, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -179,6 +179,29 @@ function handleEditKeydown(e: KeyboardEvent) {
     handleUpdateNote();
   }
 }
+
+async function handleDelete() {
+  if (!selectedBackupId.value) {
+    props.showMessage?.('warning', '请先选择一个备份');
+    return;
+  }
+  
+  backupLoading.value = true;
+  try {
+    await invoke("delete_backup", {
+      backupId: selectedBackupId.value
+    });
+    
+    props.showMessage?.('success', '删除成功');
+    selectedBackupId.value = null;
+    await loadBackupList();
+  } catch (error) {
+    console.error("Delete failed:", error);
+    props.showMessage?.('error', `删除失败: ${error}`);
+  } finally {
+    backupLoading.value = false;
+  }
+}
 </script>
 
 <template>
@@ -229,6 +252,12 @@ function handleEditKeydown(e: KeyboardEvent) {
             备份
           </NButton>
           <NButton :disabled="restoreDisabled" :loading="backupLoading" @click="handleRestore">恢复</NButton>
+          <NPopconfirm @positive-click="handleDelete">
+            <template #trigger>
+              <NButton type="error" :disabled="restoreDisabled" :loading="backupLoading">删除</NButton>
+            </template>
+            确定要删除该备份吗？此操作不可撤销。
+          </NPopconfirm>
         </NSpace>
       </div>
     </template>
