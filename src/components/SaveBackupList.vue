@@ -41,7 +41,7 @@ const editingBackupId = ref<string | null>(null);
 const editLoading = ref(false);
 
 const currentPage = ref(1);
-const pageSize = ref(5);
+const pageSize = ref(20);
 
 const backupDisabled = computed(() => !props.selectedGame);
 
@@ -69,8 +69,9 @@ function formatTimestamp(timestamp: string): string {
   const day = String(date.getDate()).padStart(2, '0');
   const hours = String(date.getHours()).padStart(2, '0');
   const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
   
-  return `${year}-${month}-${day} ${hours}:${minutes}`;
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 
 async function loadBackupList() {
@@ -233,10 +234,11 @@ async function handleDelete() {
 </script>
 
 <template>
-  <NCard title="存档备份列表" bordered>
+  <NCard title="备份" bordered :content-style="{ padding: '0', display: 'flex', flexDirection: 'column', height: '100%' }" :body-style="{ flex: '1', padding: '0', overflow: 'hidden' }">
     <div class="card-content">
       <div v-if="backupList.length > 0" class="list-header">
         <NCheckbox :checked="isAllSelected" @update:checked="toggleSelectAll">全选</NCheckbox>
+        <span class="selected-count">共 {{ backupList.length }} 项备份</span>
         <span class="selected-count" v-if="selectedBackupIds.length > 0">已选择 {{ selectedBackupIds.length }} 项</span>
       </div>
       <NList v-if="backupList.length > 0" hoverable clickable>
@@ -271,6 +273,7 @@ async function handleDelete() {
           :page-size="pageSize" 
           :item-count="backupList.length"
           :page-sizes="[5, 10, 20]"
+          :max="7"
           show-size-picker
           @update:page-size="(size: number) => pageSize = size"
         />
@@ -310,6 +313,7 @@ async function handleDelete() {
   display: flex;
   flex-direction: column;
   height: 100%;
+  overflow: hidden;
 }
 
 .list-header {
@@ -328,6 +332,7 @@ async function handleDelete() {
 .card-content :deep(.n-list) {
   flex: 1;
   overflow: auto;
+  max-height: calc(100vh - 260px);
 }
 
 .backup-item-content {

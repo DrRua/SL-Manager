@@ -154,7 +154,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <NCard title="游戏列表" bordered>
+  <NCard title="项目" bordered>
     <template #header-extra>
       <NButton type="primary" @click="openNewModal">新建</NButton>
     </template>
