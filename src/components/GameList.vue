@@ -9,6 +9,10 @@ interface GameItem {
   savePath: string;
 }
 
+const emit = defineEmits<{
+  (e: 'gameSelected', game: GameItem | null): void
+}>();
+
 const gameList = ref<GameItem[]>([]);
 const selectedGameId = ref<string | null>(null);
 const showModal = ref(false);
@@ -109,6 +113,11 @@ function handleConfirm() {
 function handleSelectGame(gameId: string) {
   selectedGameId.value = selectedGameId.value === gameId ? null : gameId;
   saveSelectedGame();
+  
+  const selectedGame = selectedGameId.value 
+    ? gameList.value.find(g => g.id === selectedGameId.value) || null
+    : null;
+  emit('gameSelected', selectedGame);
 }
 
 function handleDropdownSelect(key: string, game: GameItem) {

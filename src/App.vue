@@ -1,22 +1,51 @@
 <script setup lang="ts">
-import { NConfigProvider, NDialogProvider, zhCN, dateZhCN } from "naive-ui";
+import { ref } from "vue";
+import { NConfigProvider, NDialogProvider, NMessageProvider, zhCN, dateZhCN, createDiscreteApi } from "naive-ui";
 import GameList from "./components/GameList.vue";
 import SaveBackupList from "./components/SaveBackupList.vue";
+
+interface GameItem {
+  id: string;
+  name: string;
+  savePath: string;
+}
+
+const selectedGame = ref<GameItem | null>(null);
+
+function handleGameSelected(game: GameItem | null) {
+  selectedGame.value = game;
+}
+
+const { message } = createDiscreteApi(
+  ["message"],
+  {
+    configProviderProps: {
+      locale: zhCN,
+      dateLocale: dateZhCN,
+    },
+  }
+);
+
+function showMessage(type: 'success' | 'error' | 'warning' | 'info', content: string) {
+  message[type](content);
+}
 </script>
 
 <template>
   <NConfigProvider :locale="zhCN" :date-locale="dateZhCN">
     <NDialogProvider>
-      <div class="app-container">
-        <div class="cards-container">
-          <div class="left-card">
-            <GameList />
-          </div>
-          <div class="right-card">
-            <SaveBackupList />
+      <NMessageProvider>
+        <div class="app-container">
+          <div class="cards-container">
+            <div class="left-card">
+              <GameList @game-selected="handleGameSelected" />
+            </div>
+            <div class="right-card">
+              <SaveBackupList :selected-game="selectedGame" :show-message="showMessage" />
+            </div>
           </div>
         </div>
-      </div>
+      </NMessageProvider>
     </NDialogProvider>
   </NConfigProvider>
 </template>

@@ -1,31 +1,46 @@
 <script setup lang="ts">
 import { NCard, NButton, NList, NListItem, NPagination, NSpace } from "naive-ui";
-import { ref, computed } from "vue";
+import { ref, computed, watch } from "vue";
+import { invoke } from "@tauri-apps/api/core";
+
+interface GameItem {
+  id: string;
+  name: string;
+  savePath: string;
+}
 
 interface BackupItem {
+  id: string;
+  note: string;
+  save_time: string;
+  source_path: string;
+  size: string;
+}
+
+interface DisplayBackupItem {
   id: string;
   name: string;
   date: string;
   size: string;
+  note: string;
+  source_path: string;
 }
 
-const backupList = ref<BackupItem[]>([
-  { id: "1", name: "存档备份1", date: "2024-01-15 10:30", size: "125 MB" },
-  { id: "2", name: "存档备份2", date: "2024-01-14 15:20", size: "118 MB" },
-  { id: "3", name: "存档备份3", date: "2024-01-13 09:45", size: "110 MB" },
-  { id: "4", name: "存档备份4", date: "2024-01-12 18:00", size: "105 MB" },
-  { id: "5", name: "存档备份5", date: "2024-01-11 12:30", size: "98 MB" },
-  { id: "6", name: "存档备份6", date: "2024-01-10 16:45", size: "95 MB" },
-  { id: "7", name: "存档备份7", date: "2024-01-09 11:15", size: "90 MB" },
-  { id: "8", name: "存档备份8", date: "2024-01-08 14:00", size: "88 MB" },
-  { id: "9", name: "存档备份9", date: "2024-01-07 10:20", size: "85 MB" },
-  { id: "10", name: "存档备份10", date: "2024-01-06 17:30", size: "82 MB" },
-  { id: "11", name: "存档备份11", date: "2024-01-05 13:45", size: "80 MB" },
-  { id: "12", name: "存档备份12", date: "2024-01-04 09:00", size: "78 MB" },
-]);
+const props = defineProps<{
+  selectedGame: GameItem | null;
+  showMessage?: (type: 'success' | 'error' | 'warning' | 'info', content: string) => void;
+}>();
+
+const backupLoading = ref(false);
+const backupList = ref<DisplayBackupItem[]>([]);
+const selectedBackupId = ref<string | null>(null);
 
 const currentPage = ref(1);
 const pageSize = ref(5);
+
+const backupDisabled = computed(() => !props.selectedGame);
+
+const restoreDisabled = computed(() => !selectedBackupId.value);
 
 const paginatedList = computed(() => {
   const start = (currentPage.value - 1) * pageSize.value;
@@ -33,12 +48,94 @@ const paginatedList = computed(() => {
   return backupList.value.slice(start, end);
 });
 
-function handleBackup() {
-  console.log("执行备份");
+function formatTimestamp(timestamp: string): string {
+  const num = parseInt(timestamp);
+  if (isNaN(num)) return timestamp;
+  
+  const date = new Date(num);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  
+  return `${year}-${month}-${day} ${hours}:${minutes}`;
 }
 
-function handleRestore() {
-  console.log("执行恢复");
+async function loadBackupList() {
+  backupLoading.value = true;
+  try {
+    const list = await invoke<BackupItem[]>("get_backup_list");
+    
+    backupList.value = list.map(item => ({
+      id: item.id,
+      name: item.source_path ? item.source_path.split(/[/\\]/).pop() || '未知游戏' : '未知游戏',
+      date: formatTimestamp(item.save_time),
+      size: item.size,
+      note: item.note,
+      source_path: item.source_path
+    }));
+    
+    currentPage.value = 1;
+  } catch (error) {
+    console.error("Failed to load backup list:", error);
+    backupList.value = [];
+  } finally {
+    backupLoading.value = false;
+  }
+}
+
+watch(() => props.selectedGame, () => {
+  loadBackupList();
+}, { immediate: true });
+
+async function handleBackup() {
+  if (!props.selectedGame) {
+    props.showMessage?.('warning', '请先选择一个游戏');
+    return;
+  }
+  
+  backupLoading.value = true;
+  try {
+    await invoke<string>("backup_save", {
+      sourcePath: props.selectedGame.savePath,
+      note: "",
+      gameName: props.selectedGame.name
+    });
+    
+    props.showMessage?.('success', '备份成功');
+    await loadBackupList();
+  } catch (error) {
+    console.error("Backup failed:", error);
+    props.showMessage?.('error', `备份失败: ${error}`);
+  } finally {
+    backupLoading.value = false;
+  }
+}
+
+async function handleRestore() {
+  if (!selectedBackupId.value) {
+    props.showMessage?.('warning', '请先选择一个备份');
+    return;
+  }
+  
+  backupLoading.value = true;
+  try {
+    await invoke<string>("restore_save", {
+      backupId: selectedBackupId.value
+    });
+    
+    props.showMessage?.('success', '恢复成功');
+  } catch (error) {
+    console.error("Restore failed:", error);
+    props.showMessage?.('error', `恢复失败: ${error}`);
+  } finally {
+    backupLoading.value = false;
+  }
+}
+
+function selectBackup(backupId: string) {
+  selectedBackupId.value = selectedBackupId.value === backupId ? null : backupId;
 }
 </script>
 
@@ -49,11 +146,14 @@ function handleRestore() {
         <NListItem 
           v-for="item in paginatedList" 
           :key="item.id"
+          :class="{ 'backup-item-selected': selectedBackupId === item.id }"
+          @click="selectBackup(item.id)"
         >
           <div class="backup-item-content">
             <div class="backup-item-info">
               <span class="backup-name">{{ item.name }}</span>
               <span class="backup-date">{{ item.date }}</span>
+              <span v-if="item.note" class="backup-note">{{ item.note }}</span>
             </div>
             <span class="backup-size">{{ item.size }}</span>
           </div>
@@ -76,8 +176,15 @@ function handleRestore() {
     <template #footer>
       <div class="card-footer">
         <NSpace justify="end">
-          <NButton type="primary" @click="handleBackup">备份</NButton>
-          <NButton @click="handleRestore">恢复</NButton>
+          <NButton 
+            type="primary" 
+            :disabled="backupDisabled" 
+            :loading="backupLoading"
+            @click="handleBackup"
+          >
+            备份
+          </NButton>
+          <NButton :disabled="restoreDisabled" :loading="backupLoading" @click="handleRestore">恢复</NButton>
         </NSpace>
       </div>
     </template>
@@ -121,6 +228,11 @@ function handleRestore() {
   color: #999;
 }
 
+.backup-note {
+  font-size: 12px;
+  color: #666;
+}
+
 .backup-size {
   font-size: 12px;
   color: #666;
@@ -143,5 +255,10 @@ function handleRestore() {
 .card-footer {
   display: flex;
   justify-content: flex-end;
+}
+
+.backup-item-selected {
+  background-color: rgba(24, 160, 88, 0.1);
+  border-radius: 6px;
 }
 </style>
