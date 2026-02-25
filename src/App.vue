@@ -1,31 +1,13 @@
 <script setup lang="ts">
-import { NCard, NButton, NInput, NForm, NFormItem, NSpace } from "naive-ui";
+import GameList from "./components/GameList.vue";
+import SaveBackupList from "./components/SaveBackupList.vue";
 </script>
 
 <template>
   <div class="app-container">
     <div class="cards-container">
-      <NCard title="左侧卡片" bordered>
-        <div class="card-content">
-          <p>这是左侧卡片的内容区域，可以放置任何组件或文本。</p>
-          <NSpace vertical>
-            <NButton type="primary">左侧按钮 1</NButton>
-            <NButton>左侧按钮 2</NButton>
-          </NSpace>
-        </div>
-      </NCard>
-
-      <NCard title="右侧卡片" bordered>
-        <div class="card-content">
-          <p>这是右侧卡片的内容区域，可以放置任何组件或文本。</p>
-          <NForm>
-            <NFormItem label="输入框">
-              <NInput placeholder="请输入内容" />
-            </NFormItem>
-            <NButton type="primary">右侧按钮</NButton>
-          </NForm>
-        </div>
-      </NCard>
+      <GameList />
+      <SaveBackupList />
     </div>
   </div>
 </template>
