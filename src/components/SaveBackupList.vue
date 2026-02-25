@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { NCard, NButton, NList, NListItem, NPagination, NSpace, NModal, NInput, NPopconfirm } from "naive-ui";
+import { NCard, NButton, NList, NListItem, NPagination, NSpace, NModal, NInput, NPopconfirm, NCheckbox } from "naive-ui";
 import { ref, computed, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -33,7 +33,7 @@ const props = defineProps<{
 
 const backupLoading = ref(false);
 const backupList = ref<DisplayBackupItem[]>([]);
-const selectedBackupId = ref<string | null>(null);
+const selectedBackupIds = ref<string[]>([]);
 
 const editModalVisible = ref(false);
 const editingNote = ref('');
@@ -45,7 +45,13 @@ const pageSize = ref(5);
 
 const backupDisabled = computed(() => !props.selectedGame);
 
-const restoreDisabled = computed(() => !selectedBackupId.value);
+const restoreDisabled = computed(() => selectedBackupIds.value.length !== 1);
+
+const deleteDisabled = computed(() => selectedBackupIds.value.length === 0);
+
+const isAllSelected = computed(() => {
+  return paginatedList.value.length > 0 && paginatedList.value.every(item => selectedBackupIds.value.includes(item.id));
+});
 
 const paginatedList = computed(() => {
   const start = (currentPage.value - 1) * pageSize.value;
@@ -119,7 +125,7 @@ async function handleBackup() {
 }
 
 async function handleRestore() {
-  if (!selectedBackupId.value) {
+  if (selectedBackupIds.value.length !== 1) {
     props.showMessage?.('warning', '请先选择一个备份');
     return;
   }
@@ -127,7 +133,7 @@ async function handleRestore() {
   backupLoading.value = true;
   try {
     await invoke<string>("restore_save", {
-      backupId: selectedBackupId.value
+      backupId: selectedBackupIds.value[0]
     });
     
     props.showMessage?.('success', '恢复成功');
@@ -139,8 +145,24 @@ async function handleRestore() {
   }
 }
 
-function selectBackup(backupId: string) {
-  selectedBackupId.value = selectedBackupId.value === backupId ? null : backupId;
+function toggleSelect(backupId: string) {
+  const index = selectedBackupIds.value.indexOf(backupId);
+  if (index === -1) {
+    selectedBackupIds.value.push(backupId);
+  } else {
+    selectedBackupIds.value.splice(index, 1);
+  }
+}
+
+function toggleSelectAll() {
+  if (isAllSelected.value) {
+    const paginatedIds = paginatedList.value.map(item => item.id);
+    selectedBackupIds.value = selectedBackupIds.value.filter(id => !paginatedIds.includes(id));
+  } else {
+    const paginatedIds = paginatedList.value.map(item => item.id);
+    const newIds = paginatedIds.filter(id => !selectedBackupIds.value.includes(id));
+    selectedBackupIds.value = [...selectedBackupIds.value, ...newIds];
+  }
 }
 
 function openEditModal(item: DisplayBackupItem) {
@@ -181,19 +203,25 @@ function handleEditKeydown(e: KeyboardEvent) {
 }
 
 async function handleDelete() {
-  if (!selectedBackupId.value) {
-    props.showMessage?.('warning', '请先选择一个备份');
+  if (selectedBackupIds.value.length === 0) {
+    props.showMessage?.('warning', '请先选择至少一个备份');
     return;
   }
   
   backupLoading.value = true;
   try {
-    await invoke("delete_backup", {
-      backupId: selectedBackupId.value
-    });
+    if (selectedBackupIds.value.length === 1) {
+      await invoke("delete_backup", {
+        backupId: selectedBackupIds.value[0]
+      });
+    } else {
+      await invoke("delete_backups", {
+        backupIds: selectedBackupIds.value
+      });
+    }
     
     props.showMessage?.('success', '删除成功');
-    selectedBackupId.value = null;
+    selectedBackupIds.value = [];
     await loadBackupList();
   } catch (error) {
     console.error("Delete failed:", error);
@@ -207,14 +235,23 @@ async function handleDelete() {
 <template>
   <NCard title="存档备份列表" bordered>
     <div class="card-content">
+      <div v-if="backupList.length > 0" class="list-header">
+        <NCheckbox :checked="isAllSelected" @update:checked="toggleSelectAll">全选</NCheckbox>
+        <span class="selected-count" v-if="selectedBackupIds.length > 0">已选择 {{ selectedBackupIds.length }} 项</span>
+      </div>
       <NList v-if="backupList.length > 0" hoverable clickable>
         <NListItem 
           v-for="item in paginatedList" 
           :key="item.id"
-          :class="{ 'backup-item-selected': selectedBackupId === item.id }"
-          @click="selectBackup(item.id)"
+          :class="{ 'backup-item-selected': selectedBackupIds.includes(item.id) }"
+          @click="toggleSelect(item.id)"
         >
           <div class="backup-item-content">
+            <NCheckbox 
+              :checked="selectedBackupIds.includes(item.id)" 
+              @update:checked="toggleSelect(item.id)"
+              @click.stop
+            />
             <div class="backup-item-info">
               <span class="backup-name">{{ item.note || '无备注' }}</span>
               <span class="backup-date">{{ item.date }}</span>
@@ -254,7 +291,7 @@ async function handleDelete() {
           <NButton :disabled="restoreDisabled" :loading="backupLoading" @click="handleRestore">恢复</NButton>
           <NPopconfirm @positive-click="handleDelete">
             <template #trigger>
-              <NButton type="error" :disabled="restoreDisabled" :loading="backupLoading">删除</NButton>
+              <NButton type="error" :disabled="deleteDisabled" :loading="backupLoading">删除</NButton>
             </template>
             确定要删除该备份吗？此操作不可撤销。
           </NPopconfirm>
@@ -275,6 +312,19 @@ async function handleDelete() {
   height: 100%;
 }
 
+.list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid #eee;
+}
+
+.selected-count {
+  font-size: 12px;
+  color: #666;
+}
+
 .card-content :deep(.n-list) {
   flex: 1;
   overflow: auto;
@@ -283,7 +333,7 @@ async function handleDelete() {
 .backup-item-content {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 12px;
   width: 100%;
 }
 
