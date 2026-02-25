@@ -75,9 +75,17 @@ function formatTimestamp(timestamp: string): string {
 }
 
 async function loadBackupList() {
+  if (!props.selectedGame) {
+    backupList.value = [];
+    backupLoading.value = false;
+    return;
+  }
+  
   backupLoading.value = true;
   try {
-    const list = await invoke<BackupItem[]>("get_backup_list");
+    const list = await invoke<BackupItem[]>("get_backup_list", {
+      gameName: props.selectedGame.name
+    });
     
     backupList.value = list.map(item => ({
       id: item.id,
@@ -103,7 +111,7 @@ watch(() => props.selectedGame, () => {
 
 async function handleBackup() {
   if (!props.selectedGame) {
-    props.showMessage?.('warning', '请先选择一个游戏');
+    props.showMessage?.('warning', '请先选择一个');
     return;
   }
   
@@ -131,9 +139,15 @@ async function handleRestore() {
     return;
   }
   
+  if (!props.selectedGame) {
+    props.showMessage?.('warning', '请先选择一个');
+    return;
+  }
+  
   backupLoading.value = true;
   try {
     await invoke<string>("restore_save", {
+      gameName: props.selectedGame.name,
       backupId: selectedBackupIds.value[0]
     });
     
@@ -175,9 +189,15 @@ function openEditModal(item: DisplayBackupItem) {
 async function handleUpdateNote() {
   if (!editingBackupId.value) return;
   
+  if (!props.selectedGame) {
+    props.showMessage?.('warning', '请先选择一个');
+    return;
+  }
+  
   editLoading.value = true;
   try {
     await invoke("update_backup_note", {
+      gameName: props.selectedGame.name,
       backupId: editingBackupId.value,
       note: editingNote.value
     });
@@ -209,14 +229,21 @@ async function handleDelete() {
     return;
   }
   
+  if (!props.selectedGame) {
+    props.showMessage?.('warning', '请先选择一个');
+    return;
+  }
+  
   backupLoading.value = true;
   try {
     if (selectedBackupIds.value.length === 1) {
       await invoke("delete_backup", {
+        gameName: props.selectedGame.name,
         backupId: selectedBackupIds.value[0]
       });
     } else {
       await invoke("delete_backups", {
+        gameName: props.selectedGame.name,
         backupIds: selectedBackupIds.value
       });
     }

@@ -12,6 +12,12 @@ pub struct BackupConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ProjectConfig {
+    pub games: String,
+    pub selected_game: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BackupItem {
     pub id: String,
     pub note: String,
@@ -37,7 +43,7 @@ fn get_app_data_dir(app: tauri::AppHandle) -> Result<String, String> {
 fn backup_save(
     source_path: String,
     note: String,
-    _game_name: String,
+    game_name: String,
 ) -> Result<String, String> {
     let timestamp = chrono_timestamp();
     
@@ -47,7 +53,8 @@ fn backup_save(
         .ok_or("Failed to get executable directory")?
         .to_path_buf();
     
-    let backup_dir = exe_dir.join("backupFiles").join(&timestamp);
+    let game_folder = exe_dir.join("backupFiles").join(&game_name);
+    let backup_dir = game_folder.join(&timestamp);
     let file_dir = backup_dir.join("file");
     
     fs::create_dir_all(&file_dir).map_err(|e| e.to_string())?;
@@ -75,22 +82,22 @@ fn backup_save(
 }
 
 #[tauri::command]
-fn get_backup_list() -> Result<Vec<BackupItem>, String> {
+fn get_backup_list(game_name: String) -> Result<Vec<BackupItem>, String> {
     let exe_dir = std::env::current_exe()
         .map_err(|e| e.to_string())?
         .parent()
         .ok_or("Failed to get executable directory")?
         .to_path_buf();
     
-    let backup_base = exe_dir.join("backupFiles");
+    let game_folder = exe_dir.join("backupFiles").join(&game_name);
     
-    if !backup_base.exists() {
+    if !game_folder.exists() {
         return Ok(vec![]);
     }
     
     let mut backups = Vec::new();
     
-    for entry in fs::read_dir(&backup_base).map_err(|e| e.to_string())? {
+    for entry in fs::read_dir(&game_folder).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
         let path = entry.path();
         
@@ -102,6 +109,10 @@ fn get_backup_list() -> Result<Vec<BackupItem>, String> {
             .and_then(|n| n.to_str())
             .unwrap_or("")
             .to_string();
+        
+        if id == "projectConfig.json" {
+            continue;
+        }
         
         let config_path = path.join("config.json");
         let config_content = if config_path.exists() {
@@ -140,14 +151,14 @@ fn get_backup_list() -> Result<Vec<BackupItem>, String> {
 }
 
 #[tauri::command]
-fn update_backup_note(backup_id: String, note: String) -> Result<(), String> {
+fn update_backup_note(game_name: String, backup_id: String, note: String) -> Result<(), String> {
     let exe_dir = std::env::current_exe()
         .map_err(|e| e.to_string())?
         .parent()
         .ok_or("Failed to get executable directory")?
         .to_path_buf();
     
-    let backup_dir = exe_dir.join("backupFiles").join(&backup_id);
+    let backup_dir = exe_dir.join("backupFiles").join(&game_name).join(&backup_id);
     let config_path = backup_dir.join("config.json");
     
     if !config_path.exists() {
@@ -166,14 +177,14 @@ fn update_backup_note(backup_id: String, note: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn delete_backup(backup_id: String) -> Result<(), String> {
+fn delete_backup(game_name: String, backup_id: String) -> Result<(), String> {
     let exe_dir = std::env::current_exe()
         .map_err(|e| e.to_string())?
         .parent()
         .ok_or("Failed to get executable directory")?
         .to_path_buf();
     
-    let backup_dir = exe_dir.join("backupFiles").join(&backup_id);
+    let backup_dir = exe_dir.join("backupFiles").join(&game_name).join(&backup_id);
     
     if !backup_dir.exists() {
         return Err("备份文件不存在".to_string());
@@ -185,22 +196,39 @@ fn delete_backup(backup_id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn delete_backups(backup_ids: Vec<String>) -> Result<(), String> {
+fn delete_backups(game_name: String, backup_ids: Vec<String>) -> Result<(), String> {
     let exe_dir = std::env::current_exe()
         .map_err(|e| e.to_string())?
         .parent()
         .ok_or("Failed to get executable directory")?
         .to_path_buf();
-    
-    let backup_base = exe_dir.join("backupFiles");
-    
+
+    let game_folder = exe_dir.join("backupFiles").join(&game_name);
+
     for backup_id in backup_ids {
-        let backup_dir = backup_base.join(&backup_id);
+        let backup_dir = game_folder.join(&backup_id);
         if backup_dir.exists() {
             fs::remove_dir_all(&backup_dir).map_err(|e| e.to_string())?;
         }
     }
-    
+
+    Ok(())
+}
+
+#[tauri::command]
+fn delete_game_backups(game_name: String) -> Result<(), String> {
+    let exe_dir = std::env::current_exe()
+        .map_err(|e| e.to_string())?
+        .parent()
+        .ok_or("Failed to get executable directory")?
+        .to_path_buf();
+
+    let game_folder = exe_dir.join("backupFiles").join(&game_name);
+
+    if game_folder.exists() {
+        fs::remove_dir_all(&game_folder).map_err(|e| e.to_string())?;
+    }
+
     Ok(())
 }
 
@@ -241,14 +269,14 @@ fn calculate_size_recursive(path: &Path) -> u64 {
 }
 
 #[tauri::command]
-fn restore_save(backup_id: String) -> Result<String, String> {
+fn restore_save(game_name: String, backup_id: String) -> Result<String, String> {
     let exe_dir = std::env::current_exe()
         .map_err(|e| e.to_string())?
         .parent()
         .ok_or("Failed to get executable directory")?
         .to_path_buf();
     
-    let backup_dir = exe_dir.join("backupFiles").join(&backup_id);
+    let backup_dir = exe_dir.join("backupFiles").join(&game_name).join(&backup_id);
     let file_dir = backup_dir.join("file");
     let config_path = backup_dir.join("config.json");
     
@@ -283,6 +311,85 @@ fn restore_save(backup_id: String) -> Result<String, String> {
     Ok(source_path)
 }
 
+#[tauri::command]
+fn save_project_config(game_name: String, games_json: String, selected_game: String) -> Result<(), String> {
+    let exe_dir = std::env::current_exe()
+        .map_err(|e| e.to_string())?
+        .parent()
+        .ok_or("Failed to get executable directory")?
+        .to_path_buf();
+    
+    let game_folder = exe_dir.join("backupFiles").join(&game_name);
+    fs::create_dir_all(&game_folder).map_err(|e| e.to_string())?;
+    
+    let config = ProjectConfig {
+        games: games_json,
+        selected_game,
+    };
+    
+    let config_path = game_folder.join("projectConfig.json");
+    let config_json = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
+    fs::write(&config_path, config_json).map_err(|e| e.to_string())?;
+    
+    Ok(())
+}
+
+#[tauri::command]
+fn get_project_config(game_name: String) -> Result<ProjectConfig, String> {
+    let exe_dir = std::env::current_exe()
+        .map_err(|e| e.to_string())?
+        .parent()
+        .ok_or("Failed to get executable directory")?
+        .to_path_buf();
+    
+    let game_folder = exe_dir.join("backupFiles").join(&game_name);
+    let config_path = game_folder.join("projectConfig.json");
+    
+    if !config_path.exists() {
+        return Ok(ProjectConfig {
+            games: String::new(),
+            selected_game: String::new(),
+        });
+    }
+    
+    let config_content = fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
+    let config: ProjectConfig = serde_json::from_str(&config_content).map_err(|e| e.to_string())?;
+    
+    Ok(config)
+}
+
+#[tauri::command]
+fn get_game_list() -> Result<Vec<String>, String> {
+    let exe_dir = std::env::current_exe()
+        .map_err(|e| e.to_string())?
+        .parent()
+        .ok_or("Failed to get executable directory")?
+        .to_path_buf();
+    
+    let backup_base = exe_dir.join("backupFiles");
+    
+    if !backup_base.exists() {
+        return Ok(vec![]);
+    }
+    
+    let mut games = Vec::new();
+    
+    for entry in fs::read_dir(&backup_base).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        
+        if !path.is_dir() {
+            continue;
+        }
+        
+        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+            games.push(name.to_string());
+        }
+    }
+    
+    Ok(games)
+}
+
 fn chrono_timestamp() -> String {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -311,13 +418,31 @@ fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
+#[tauri::command]
+fn rename_game_folder(old_name: String, new_name: String) -> Result<(), String> {
+    let exe_dir = std::env::current_exe()
+        .map_err(|e| e.to_string())?
+        .parent()
+        .ok_or("Failed to get executable directory")?
+        .to_path_buf();
+
+    let old_folder = exe_dir.join("backupFiles").join(&old_name);
+    let new_folder = exe_dir.join("backupFiles").join(&new_name);
+
+    if old_folder.exists() {
+        fs::rename(&old_folder, &new_folder).map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .invoke_handler(tauri::generate_handler![greet, get_app_data_dir, backup_save, get_backup_list, restore_save, update_backup_note, delete_backup, delete_backups])
+        .invoke_handler(tauri::generate_handler![greet, get_app_data_dir, backup_save, get_backup_list, restore_save, update_backup_note, delete_backup, delete_backups, delete_game_backups, rename_game_folder, save_project_config, get_project_config, get_game_list])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

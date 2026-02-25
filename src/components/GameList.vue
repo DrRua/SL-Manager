@@ -2,12 +2,17 @@
 import { NCard, NButton, NSpace, NModal, NForm, NFormItem, NInput, NList, NListItem, NDropdown, useDialog } from "naive-ui";
 import { ref, onMounted } from "vue";
 import { open } from "@tauri-apps/plugin-dialog";
+import { invoke } from "@tauri-apps/api/core";
 
 interface GameItem {
   id: string;
   name: string;
   savePath: string;
 }
+
+const props = defineProps<{
+  showMessage?: (type: 'success' | 'error' | 'warning' | 'info', content: string) => void;
+}>();
 
 const emit = defineEmits<{
   (e: 'gameSelected', game: GameItem | null): void
@@ -93,12 +98,34 @@ function handleConfirm() {
     return;
   }
   
+  const trimmedName = newGameName.value.trim();
+  const isDuplicate = gameList.value.some(g => {
+    if (isEditMode.value && editingGameId.value) {
+      return g.name === trimmedName && g.id !== editingGameId.value;
+    }
+    return g.name === trimmedName;
+  });
+  
+  if (isDuplicate) {
+    props.showMessage?.('warning', '项目名称不能重复');
+    return;
+  }
+  
   if (isEditMode.value && editingGameId.value) {
     const index = gameList.value.findIndex(g => g.id === editingGameId.value);
     if (index !== -1) {
-      gameList.value[index].name = newGameName.value.trim();
+      const oldName = gameList.value[index].name;
+      const newName = trimmedName;
+      
+      gameList.value[index].name = newName;
       gameList.value[index].savePath = newGameSavePath.value.trim();
+      
+      if (oldName !== newName) {
+        renameGameFolder(oldName, newName);
+      }
     }
+    saveGames();
+    saveProjectConfig(gameList.value[index]);
   } else {
     const newGame: GameItem = {
       id: Date.now().toString(),
@@ -106,10 +133,34 @@ function handleConfirm() {
       savePath: newGameSavePath.value.trim(),
     };
     gameList.value.push(newGame);
+    saveGames();
+    saveProjectConfig(newGame);
   }
   
-  saveGames();
   showModal.value = false;
+}
+
+async function saveProjectConfig(game: GameItem) {
+  try {
+    await invoke("save_project_config", {
+      gameName: game.name,
+      gamesJson: JSON.stringify(gameList.value),
+      selectedGame: game.id
+    });
+  } catch (error) {
+    console.error("Failed to save project config:", error);
+  }
+}
+
+async function renameGameFolder(oldName: string, newName: string) {
+  try {
+    await invoke("rename_game_folder", {
+      oldName: oldName,
+      newName: newName
+    });
+  } catch (error) {
+    console.error("Failed to rename game folder:", error);
+  }
 }
 
 function handleSelectGame(gameId: string) {
@@ -120,6 +171,10 @@ function handleSelectGame(gameId: string) {
     ? gameList.value.find(g => g.id === selectedGameId.value) || null
     : null;
   emit('gameSelected', selectedGame);
+  
+  if (selectedGame) {
+    saveProjectConfig(selectedGame);
+  }
 }
 
 function handleDropdownSelect(key: string, game: GameItem) {
@@ -132,18 +187,35 @@ function handleDropdownSelect(key: string, game: GameItem) {
       positiveText: "确定",
       negativeText: "取消",
       onPositiveClick: () => {
-        deleteGame(game.id);
+        dialog.error({
+          title: "警告",
+          content: `删除"${game.name}"后，所有备份文件也将被删除，此操作不可撤销！`,
+          positiveText: "仍要删除",
+          negativeText: "取消",
+          onPositiveClick: () => {
+            deleteGame(game.id, game.name);
+          }
+        });
       }
     });
   }
   dropdownShow.value = false;
 }
 
-function deleteGame(gameId: string) {
+async function deleteGame(gameId: string, gameName: string) {
+  try {
+    await invoke("delete_game_backups", {
+      gameName: gameName
+    });
+  } catch (error) {
+    console.error("Failed to delete game backups:", error);
+  }
+
   gameList.value = gameList.value.filter(g => g.id !== gameId);
   if (selectedGameId.value === gameId) {
     selectedGameId.value = null;
     saveSelectedGame();
+    emit('gameSelected', null);
   }
   saveGames();
 }
@@ -154,7 +226,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <NCard title="项目" bordered>
+  <NCard title="我的列表" bordered>
     <template #header-extra>
       <NButton type="primary" @click="openNewModal">新建</NButton>
     </template>
@@ -190,14 +262,14 @@ onMounted(() => {
           </div>
         </NListItem>
       </NList>
-      <p v-else class="empty-tip">暂无游戏，请点击"新建"添加</p>
+      <p v-else class="empty-tip">暂无项目，请点击"新建"添加</p>
     </div>
   </NCard>
 
-  <NModal v-model:show="showModal" preset="card" :title="isEditMode ? '编辑游戏' : '新建游戏'" style="width: 500px;">
+  <NModal v-model:show="showModal" preset="card" :title="isEditMode ? '编辑' : '新建'" style="width: 500px;">
     <NForm>
       <NFormItem label="名称">
-        <NInput v-model:value="newGameName" placeholder="请输入游戏名称" />
+        <NInput v-model:value="newGameName" placeholder="请输入名称" />
       </NFormItem>
       <NFormItem label="存档地址">
         <div class="path-input-wrapper">

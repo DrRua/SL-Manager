@@ -38,7 +38,7 @@ function showMessage(type: 'success' | 'error' | 'warning' | 'info', content: st
         <div class="app-container">
           <div class="cards-container">
             <div class="left-card">
-              <GameList @game-selected="handleGameSelected" />
+              <GameList @game-selected="handleGameSelected" :show-message="showMessage" />
             </div>
             <div class="right-card">
               <SaveBackupList :selected-game="selectedGame" :show-message="showMessage" />
