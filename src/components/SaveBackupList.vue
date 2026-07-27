@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { NCard, NButton, NList, NListItem, NPagination, NSpace, NModal, NInput, NPopconfirm, NCheckbox } from "naive-ui";
+import { NCard, NButton, NList, NListItem, NPagination, NModal, NInput, NPopconfirm, NCheckbox } from "naive-ui";
 import { ref, computed, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -31,9 +31,16 @@ const props = defineProps<{
   showMessage?: (type: 'success' | 'error' | 'warning' | 'info', content: string) => void;
 }>();
 
+const isManageMode = ref(false);
+
 const backupLoading = ref(false);
 const backupList = ref<DisplayBackupItem[]>([]);
 const selectedBackupIds = ref<string[]>([]);
+
+function toggleManageMode() {
+  isManageMode.value = !isManageMode.value;
+  selectedBackupIds.value = [];
+}
 
 const editModalVisible = ref(false);
 const editingNote = ref('');
@@ -161,6 +168,14 @@ async function handleRestore() {
 }
 
 function toggleSelect(backupId: string) {
+  if (!isManageMode.value) {
+    if (selectedBackupIds.value.includes(backupId)) {
+      selectedBackupIds.value = [];
+    } else {
+      selectedBackupIds.value = [backupId];
+    }
+    return;
+  }
   const index = selectedBackupIds.value.indexOf(backupId);
   if (index === -1) {
     selectedBackupIds.value.push(backupId);
@@ -264,9 +279,11 @@ async function handleDelete() {
   <NCard title="备份" bordered :content-style="{ padding: '0', display: 'flex', flexDirection: 'column', height: '100%' }" :body-style="{ flex: '1', padding: '0', overflow: 'hidden' }">
     <div class="card-content">
       <div v-if="backupList.length > 0" class="list-header">
-        <NCheckbox :checked="isAllSelected" @update:checked="toggleSelectAll">全选</NCheckbox>
-        <span class="selected-count">共 {{ backupList.length }} 项备份</span>
-        <span class="selected-count" v-if="selectedBackupIds.length > 0">已选择 {{ selectedBackupIds.length }} 项</span>
+        <template v-if="isManageMode">
+          <NCheckbox :checked="isAllSelected" @update:checked="toggleSelectAll">全选</NCheckbox>
+          <span class="selected-count">共 {{ backupList.length }} 项备份</span>
+          <span class="selected-count" v-if="selectedBackupIds.length > 0">已选择 {{ selectedBackupIds.length }} 项</span>
+        </template>
       </div>
       <NList v-if="backupList.length > 0" hoverable clickable>
         <NListItem 
@@ -293,39 +310,43 @@ async function handleDelete() {
         </NListItem>
       </NList>
       <p v-else class="empty-tip">暂无备份记录</p>
-      
-      <div class="pagination-wrapper">
-        <NPagination 
-          v-model:page="currentPage" 
-          :page-size="pageSize" 
-          :item-count="backupList.length"
-          :page-sizes="[5, 10, 20]"
-          :max="7"
-          show-size-picker
-          @update:page-size="(size: number) => pageSize = size"
-        />
-      </div>
     </div>
 
     <template #footer>
       <div class="card-footer">
-        <NSpace justify="end">
-          <NButton 
-            type="primary" 
-            :disabled="backupDisabled" 
-            :loading="backupLoading"
-            @click="handleBackup"
-          >
-            备份
-          </NButton>
-          <NButton :disabled="restoreDisabled" :loading="backupLoading" @click="handleRestore">恢复</NButton>
-          <NPopconfirm @positive-click="handleDelete">
+        <NButton @click="toggleManageMode">
+          {{ isManageMode ? '退出存档管理' : '存档管理' }}
+        </NButton>
+        <div class="pagination-wrapper">
+          <NPagination 
+            v-model:page="currentPage" 
+            :page-size="pageSize" 
+            :item-count="backupList.length"
+            :page-sizes="[10, 20, 50, 100, 500, 1000]"
+            :max="7"
+            show-size-picker
+            @update:page-size="(size: number) => pageSize = size"
+          />
+        </div>
+        <div class="action-group">
+          <template v-if="!isManageMode">
+            <NButton 
+              type="primary" 
+              :disabled="backupDisabled" 
+              :loading="backupLoading"
+              @click="handleBackup"
+            >
+              备份
+            </NButton>
+            <NButton :disabled="restoreDisabled" :loading="backupLoading" @click="handleRestore">恢复</NButton>
+          </template>
+          <NPopconfirm v-else @positive-click="handleDelete">
             <template #trigger>
               <NButton type="error" :disabled="deleteDisabled" :loading="backupLoading">删除</NButton>
             </template>
-            确定要删除该备份吗？此操作不可撤销。
+            确定要删除所选备份吗？此操作不可撤销。
           </NPopconfirm>
-        </NSpace>
+        </div>
       </div>
     </template>
   </NCard>
@@ -359,7 +380,7 @@ async function handleDelete() {
 .card-content :deep(.n-list) {
   flex: 1;
   overflow: auto;
-  max-height: calc(100vh - 260px);
+  max-height: calc(100vh - 230px);
 }
 
 .backup-item-content {
@@ -412,15 +433,23 @@ async function handleDelete() {
 }
 
 .pagination-wrapper {
+  flex: 1;
   display: flex;
   justify-content: center;
-  padding-top: 16px;
-  flex-shrink: 0;
 }
 
 .card-footer {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  width: 100%;
+  gap: 8px;
+  border-top: 1px solid #eee;
+  padding-top: 12px;
+}
+
+.action-group {
+  display: flex;
+  gap: 8px;
 }
 
 .backup-item-selected {
